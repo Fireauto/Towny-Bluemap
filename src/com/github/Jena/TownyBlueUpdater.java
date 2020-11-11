@@ -1,7 +1,9 @@
 package com.github.Jena;
 
+import com.flowpowered.math.vector.Vector2d;
 import com.flowpowered.math.vector.Vector3d;
 import com.palmergames.bukkit.towny.TownyAPI;
+import com.palmergames.bukkit.towny.TownyUniverse;
 import com.palmergames.bukkit.towny.exceptions.NotRegisteredException;
 import com.palmergames.bukkit.towny.object.Resident;
 import com.palmergames.bukkit.towny.object.Town;
@@ -9,128 +11,328 @@ import com.palmergames.bukkit.towny.object.TownBlock;
 import com.palmergames.bukkit.towny.object.TownyWorld;
 import de.bluecolored.bluemap.api.BlueMapAPI;
 import de.bluecolored.bluemap.api.BlueMapMap;
-import de.bluecolored.bluemap.api.BlueMapWorld;
-import de.bluecolored.bluemap.api.marker.*;
 import de.bluecolored.bluemap.api.marker.Shape;
-import org.bukkit.Bukkit;
-import org.bukkit.World;
+import de.bluecolored.bluemap.api.marker.*;
+import org.bukkit.configuration.file.FileConfiguration;
 
 import java.awt.*;
 import java.io.IOException;
+import java.util.Optional;
 
 public class TownyBlueUpdater {
-    public static Runnable CompleteUpdate = TownyBlueUpdater::CompleteUpdateTask;
     //todo add config values
-    public static Color towncolor = new Color(255, 0 , 0, 100);
-    public static Color nationcolor = new Color(0, 190, 200, 100);
+    public static Color towncolor = new Color(255, 0, 0, 100);
+    public static Color nationcolor = new Color(13, 255, 235, 100);
+    private static final FileConfiguration config = TownyBlue.config;
+    protected static String space = "_";
 
 
-    public static void CompleteUpdate(MarkerSet set) {
-        try {
-            if (BlueMapAPI.getInstance().isPresent()) {
-
-                if (BlueMapAPI.getInstance().get().getMarkerAPI().getMarkerSet("towns").isPresent()) {
-                    BlueMapAPI.getInstance().get().getMarkerAPI().removeMarkerSet("towns");
+    public static void CompleteUpdate() {
+        BlueMapAPI.getInstance().ifPresent(blueMapAPI -> {
+            try {
+                // create the MarkerSet
+                if (blueMapAPI.getMarkerAPI().getMarkerSet("towns").isPresent()) {
+                    blueMapAPI.getMarkerAPI().removeMarkerSet("towns");
                 }
-                BlueMapAPI.getInstance().get().getMarkerAPI().createMarkerSet("towns");
-                for (BlueMapWorld world1 : BlueMapAPI.getInstance().get().getWorlds()) {
-                    for (BlueMapMap map : world1.getMaps()) {
-                        World world = Bukkit.getWorld(map.getWorld().getUuid());
-                        TownyWorld townyWorld = TownyAPI.getInstance().getTownyWorld(world.getName());
+                MarkerSet set = blueMapAPI.getMarkerAPI().createMarkerSet("towns");
 
-                        for (TownBlock townBlock : townyWorld.getTownBlocks()) {
-                            double xvalue = townBlock.getCoord().getX() * 16;
-                            double zvalue = townBlock.getCoord().getZ() * 16;
+                // update markers
+                for (BlueMapMap map : blueMapAPI.getMaps()) {
+                    if (TownyAPI.getInstance().getTownyWorld(map.getName()) != null) {
+                        TownyWorld world = TownyAPI.getInstance().getTownyWorld(map.getName());
 
-                            Shape shape = Shape.createRect(xvalue, zvalue, xvalue + 16, zvalue + 16);
-                            ShapeMarker marker = set.createShapeMarker(townBlock.getTown().getName() + "_" + xvalue / 16 + "_" + zvalue / 16, map, shape, TownyBlue.config.getInt("y-height"));
-                            marker.setLabel(getHTMLforTown(townBlock.getTown()));
-                            marker.setMaxDistance(1000);
+                        for (TownBlock townBlock : world.getTownBlocks()) {
+                            if (townBlock.hasTown()) {
+                                Town town = townBlock.getTown();
+                                double x = townBlock.getX() * 16;
+                                double z = townBlock.getZ() * 16;
+                                double y = config.getDouble("height");
+                                Vector2d vector2a = new Vector2d(x, z);
+                                Vector2d vector2b = new Vector2d(x + 16, z + 16);
 
-                            if (townBlock.getTown().hasNation()) {
-                                marker.setFillColor(nationcolor);
-                            } else {marker.setFillColor(towncolor);}
-                            marker.setBorderColor(marker.getFillColor());
+                                // making the basic shape marker and assigning default values
+                                Shape shape = new Shape(vector2a, vector2b);
+                                ShapeMarker marker = set.createShapeMarker(town.getName() + space + x + space + z, map, shape, (float) y);
+                                marker.setLabel(getHTMLforTown(town));
+                                marker.setMaxDistance(1500);
 
-                            if (townBlock.isHomeBlock()) {
-                                Vector3d vector = new Vector3d(xvalue + 8, TownyBlue.config.getInt("y-height") + 3, zvalue + 8);
-                                POIMarker home = set.createPOIMarker(townBlock.getTown().getName() + "_" + xvalue / 16 + "_" + zvalue / 16 + "_icon", map, vector);
-                                home.setLabel(getHTMLforTown(townBlock.getTown()));
-                                home.setIcon(TownyBlue.config.getString("home-marker"), home.getIconAnchor());
-                                home.setMaxDistance(TownyBlue.config.getInt("max-distance"));
-
-                                if (townBlock.getTown().isCapital()) {
-                                    home.setIcon(TownyBlue.config.getString("capital-marker"), home.getIconAnchor());
-                                }
-                            }
-                        }
-                        BlueMapAPI.getInstance().get().getMarkerAPI().save();
-                    }
-                }
-
-            }
-        } catch (NotRegisteredException | IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static void TownUpdate(Town town, MarkerSet set) {
-        try {
-            if (BlueMapAPI.getInstance().isPresent()) {
-                for (BlueMapWorld world1 : BlueMapAPI.getInstance().get().getWorlds()) {
-                    for (BlueMapMap map : world1.getMaps()) {
-                        if (map.getWorld().getUuid() == town.getWorld().getUID()) {
-                            for (TownBlock townBlock : town.getTownBlocks()) {
-                                double xvalue = townBlock.getCoord().getX() * 16;
-                                double zvalue = townBlock.getCoord().getZ() * 16;
-                                String townblockname = townBlock.getTown().getName() + "_" + xvalue / 16 + "_" + zvalue / 16;
-
-                                if (set.getMarker(townblockname).isPresent()) {
-                                    set.removeMarker(set.getMarker(townblockname).get());
-                                }
-
-                                Shape shape = Shape.createRect(xvalue, zvalue, xvalue + 16, zvalue + 16);
-                                ShapeMarker marker = set.createShapeMarker(townBlock.getTown().getName() + "_" + xvalue / 16 + "_" + zvalue / 16, map, shape, TownyBlue.config.getInt("y-height"));
-                                marker.setLabel(getHTMLforTown(townBlock.getTown()));
-                                marker.setMaxDistance(1000);
-
-                                if (townBlock.getTown().hasNation()) {
+                                // this is making different colors for towns in a nation
+                                if (town.hasNation()) {
                                     marker.setFillColor(nationcolor);
                                 } else {marker.setFillColor(towncolor);}
                                 marker.setBorderColor(marker.getFillColor());
 
+                                // adding homeblock marker
                                 if (townBlock.isHomeBlock()) {
-                                    Vector3d vector = new Vector3d(xvalue + 8, TownyBlue.config.getInt("y-height") + 3, zvalue + 8);
-                                    POIMarker home = set.createPOIMarker(townBlock.getTown().getName() + "_icon", map, vector);
-                                    home.setLabel(getHTMLforTown(townBlock.getTown()));
-                                    home.setIcon(TownyBlue.config.getString("home-marker"), home.getIconAnchor());
-                                    home.setMaxDistance(TownyBlue.config.getInt("max-distance"));
-
-                                    if (townBlock.getTown().isCapital()) {
-                                        home.setIcon(TownyBlue.config.getString("capital-marker"), home.getIconAnchor());
-                                    }
+                                    Vector3d vector3d = new Vector3d(x + 8, y + 2, z + 8);
+                                    POIMarker poiMarker = set.createPOIMarker(town.getName() + space + "icon", map, vector3d);
+                                    poiMarker.setLabel(getHTMLforTown(townBlock.getTown()));
+                                    if (town.isCapital()) {
+                                        poiMarker.setIcon(TownyBlue.config.getString("capital-marker"), poiMarker.getIconAnchor());
+                                    } else {poiMarker.setIcon(TownyBlue.config.getString("home-marker"), poiMarker.getIconAnchor());}
+                                    poiMarker.setMaxDistance(TownyBlue.config.getInt("max-distance"));
                                 }
-                            }
-                            BlueMapAPI.getInstance().get().getMarkerAPI().save();
+                            } else {return;}
                         }
                     }
                 }
-            }
-        } catch (NotRegisteredException | IOException e) {
-            e.printStackTrace();
-        }
+                blueMapAPI.getMarkerAPI().save();
+            } catch (IOException | NotRegisteredException e) {e.printStackTrace();}
+        });
     }
 
-    private static void CompleteUpdateTask() {
-        MarkerSet set = TownyBlue.set;
-        if (set != null) {
-            CompleteUpdate(set);
+    public static void UpdateTown(Town town) {
+        BlueMapAPI.getInstance().ifPresent(blueMapAPI -> {
             try {
-                TownyBlue.api.save();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
+                // get the MarkerSet
+                MarkerSet set;
+                if (blueMapAPI.getMarkerAPI().getMarkerSet("towns").isPresent()) {
+                    set = blueMapAPI.getMarkerAPI().getMarkerSet("towns").get();
+                } else {set = blueMapAPI.getMarkerAPI().createMarkerSet("towns");}
+
+                // get the map
+                BlueMapMap map = null;
+                for (BlueMapMap mapMap : blueMapAPI.getMaps()) {
+                    if (town.getWorld().getUID() == mapMap.getWorld().getUuid()) {
+                        map = mapMap;
+                    }
+                }
+                if (map != null) {
+                    for (TownBlock townBlock : town.getTownBlocks()) {
+                        double x = townBlock.getX() * 16;
+                        double z = townBlock.getZ() * 16;
+                        Vector2d vector2a = new Vector2d(x, z);
+                        Vector2d vector2b = new Vector2d(x + 16, z + 16);
+                        double y = config.getDouble("height");
+                        String id = town.getName() + space + x + space + z;
+                        Optional<Marker> marker = set.getMarker(id);
+
+
+                        if (marker.isPresent()) {
+                            marker.get().setLabel(getHTMLforTown(town));
+
+                            // if it's homeblock
+                            if (townBlock.isHomeBlock()) {
+                                Vector3d vector3d = new Vector3d(x + 8, y + 2, z + 8);
+                                if (set.getMarker(town.getName() + space + "icon").isPresent()) {
+                                    set.removeMarker(town.getName() + space + "icon");
+                                }
+                                POIMarker poiMarker = set.createPOIMarker(town.getName() + space + "icon", map, vector3d);
+                                poiMarker.setLabel(getHTMLforTown(townBlock.getTown()));
+                                if (town.isCapital()) {
+                                    poiMarker.setIcon(TownyBlue.config.getString("capital-marker"), poiMarker.getIconAnchor());
+                                } else {
+                                    poiMarker.setIcon(TownyBlue.config.getString("home-marker"), poiMarker.getIconAnchor());
+                                }
+                                poiMarker.setMaxDistance(TownyBlue.config.getInt("max-distance"));
+                            }
+                        } else {
+                            // same shape stuff as complete update
+                            Shape shape = new Shape(vector2a, vector2b);
+                            ShapeMarker marker1 = set.createShapeMarker(town.getName() + space + x + space + z, map, shape, (float) y);
+                            marker1.setLabel(getHTMLforTown(town));
+                            marker1.setMaxDistance(1500);
+
+                            // this is making different colors for towns in a nation
+                            if (town.hasNation()) {
+                                marker1.setFillColor(nationcolor);
+                            } else {
+                                marker1.setFillColor(towncolor);
+                            }
+                            marker1.setBorderColor(marker1.getFillColor());
+
+                            // adding homeblock marker
+                            if (townBlock.isHomeBlock()) {
+                                Vector3d vector3d = new Vector3d(x + 8, y + 2, z + 8);
+                                POIMarker poiMarker = set.createPOIMarker(town.getName() + space + "icon", map, vector3d);
+                                poiMarker.setLabel(getHTMLforTown(townBlock.getTown()));
+                                if (town.isCapital()) {
+                                    poiMarker.setIcon(TownyBlue.config.getString("capital-marker"), poiMarker.getIconAnchor());
+                                } else {
+                                    poiMarker.setIcon(TownyBlue.config.getString("home-marker"), poiMarker.getIconAnchor());
+                                }
+                                poiMarker.setMaxDistance(TownyBlue.config.getInt("max-distance"));
+                            }
+                        }
+                    }
+
+                    // for removing unclaimed plots
+                    for (Marker marker : set.getMarkers()) {
+                        if (marker.getId().contains(town.getName()) && !marker.getId().contains("icon")) {
+                            String s = marker.getId().replace(town.getName() + space, "");
+                            String[] strings =  s.split(space);
+
+                            if (strings.length == 2) {
+                                int x = Integer.parseInt(strings[0]);
+                                int z = Integer.parseInt(strings[1]);
+                                if (TownyAPI.getInstance().isWilderness(town.getWorld().getBlockAt(x * 16, 0, z * 16).getLocation())) {
+                                    set.removeMarker(marker);
+                                } else {
+                                    TownBlock townBlock = TownyAPI.getInstance().getTownBlock(town.getWorld().getBlockAt(x * 16, 0, z * 16).getLocation());
+                                    if (townBlock.getTown() != town) {
+                                        set.removeMarker(marker);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (IOException | NotRegisteredException e) {e.printStackTrace();}
+        });
+    }
+
+    public static void UpdatePlot(TownBlock townBlock) {
+        BlueMapAPI.getInstance().ifPresent(blueMapAPI -> {
+            try {
+                // get the MarkerSet
+                MarkerSet set;
+                if (blueMapAPI.getMarkerAPI().getMarkerSet("towns").isPresent()) {
+                    set = blueMapAPI.getMarkerAPI().getMarkerSet("towns").get();
+                } else {
+                    set = blueMapAPI.getMarkerAPI().createMarkerSet("towns");
+                }
+
+                // get the map
+                BlueMapMap map = null;
+                for (BlueMapMap mapMap : blueMapAPI.getMaps()) {
+                    Town exampletown = townBlock.getWorld().getTowns().values().iterator().next();
+                    if (exampletown.getWorld().getUID() == mapMap.getWorld().getUuid()) {
+                        map = mapMap;
+                    }
+                }
+
+                if (townBlock.hasTown()) {
+                    for (Marker marker : set.getMarkers()) {
+                        if (marker.getId().contains(String.valueOf(townBlock.getX())) && marker.getId().contains(String.valueOf(townBlock.getZ()))) {
+                            String s = marker.getId();
+                            s = s.replace(space + townBlock.getX() + space + townBlock.getZ(), "");
+                            try {
+                                Town town1 = TownyUniverse.getInstance().getDataSource().getTown(s);
+                                if (townBlock.getTown() == town1) {
+                                    double x = townBlock.getX() * 16;
+                                    double z = townBlock.getZ() * 16;
+                                    Vector2d vector2a = new Vector2d(x, z);
+                                    Vector2d vector2b = new Vector2d(x + 16, z + 16);
+                                    double y = config.getDouble("height");
+
+                                    // adding shapemarker
+                                    set.removeMarker(marker);
+                                    Shape shape = new Shape(vector2a, vector2b);
+                                    ShapeMarker marker1 = set.createShapeMarker(town1.getName() + space + x + space + z, map, shape, (float) y);
+                                    marker.setLabel(getHTMLforTown(town1));
+                                    marker.setMaxDistance(1500);
+
+                                    // this is making different colors for towns in a nation
+                                    if (town1.hasNation()) {
+                                        marker1.setFillColor(nationcolor);
+                                    } else {
+                                        marker1.setFillColor(towncolor);
+                                    }
+                                    marker1.setBorderColor(marker1.getFillColor());
+
+                                    // adding homeblock marker
+                                    if (townBlock.isHomeBlock()) {
+                                        Vector3d vector3d = new Vector3d(x + 8, y + 2, z + 8);
+                                        POIMarker poiMarker = set.createPOIMarker(town1.getName() + space + "icon", map, vector3d);
+                                        poiMarker.setLabel(getHTMLforTown(town1));
+                                        if (town1.isCapital()) {
+                                            poiMarker.setIcon(TownyBlue.config.getString("capital-marker"), poiMarker.getIconAnchor());
+                                        } else {
+                                            poiMarker.setIcon(TownyBlue.config.getString("home-marker"), poiMarker.getIconAnchor());
+                                        }
+                                        poiMarker.setMaxDistance(TownyBlue.config.getInt("max-distance"));
+                                    }
+                                } else {
+                                    Town town = townBlock.getTown();
+
+                                    double x = townBlock.getX() * 16;
+                                    double z = townBlock.getZ() * 16;
+                                    Vector2d vector2a = new Vector2d(x, z);
+                                    Vector2d vector2b = new Vector2d(x + 16, z + 16);
+                                    double y = config.getDouble("height");
+
+                                    // adding shapemarker
+                                    set.removeMarker(marker);
+                                    Shape shape = new Shape(vector2a, vector2b);
+                                    ShapeMarker marker1 = set.createShapeMarker(town.getName() + space + x + space + z, map, shape, (float) y);
+                                    marker.setLabel(getHTMLforTown(town));
+                                    marker.setMaxDistance(1500);
+
+                                    // this is making different colors for towns in a nation
+                                    if (town.hasNation()) {
+                                        marker1.setFillColor(nationcolor);
+                                    } else {
+                                        marker1.setFillColor(towncolor);
+                                    }
+                                    marker1.setBorderColor(marker1.getFillColor());
+
+                                    // adding homeblock marker
+                                    if (townBlock.isHomeBlock()) {
+                                        Vector3d vector3d = new Vector3d(x + 8, y + 2, z + 8);
+                                        POIMarker poiMarker = set.createPOIMarker(town.getName() + space + "icon", map, vector3d);
+                                        poiMarker.setLabel(getHTMLforTown(town));
+                                        if (town.isCapital()) {
+                                            poiMarker.setIcon(TownyBlue.config.getString("capital-marker"), poiMarker.getIconAnchor());
+                                        } else {
+                                            poiMarker.setIcon(TownyBlue.config.getString("home-marker"), poiMarker.getIconAnchor());
+                                        }
+                                        poiMarker.setMaxDistance(TownyBlue.config.getInt("max-distance"));
+                                    }
+                                }
+                            } catch (NotRegisteredException e) {
+                                e.printStackTrace();
+                                try {
+                                    Town town = townBlock.getTown();
+
+                                    double x = townBlock.getX() * 16;
+                                    double z = townBlock.getZ() * 16;
+                                    Vector2d vector2a = new Vector2d(x, z);
+                                    Vector2d vector2b = new Vector2d(x + 16, z + 16);
+                                    double y = config.getDouble("height");
+
+                                    // adding shapemarker
+                                    set.removeMarker(marker);
+                                    Shape shape = new Shape(vector2a, vector2b);
+                                    ShapeMarker marker1 = set.createShapeMarker(town.getName() + space + x + space + z, map, shape, (float) y);
+                                    marker.setLabel(getHTMLforTown(town));
+                                    marker.setMaxDistance(1500);
+
+                                    // this is making different colors for towns in a nation
+                                    if (town.hasNation()) {
+                                        marker1.setFillColor(nationcolor);
+                                    } else {
+                                        marker1.setFillColor(towncolor);
+                                    }
+                                    marker1.setBorderColor(marker1.getFillColor());
+
+                                    // adding homeblock marker
+                                    if (townBlock.isHomeBlock()) {
+                                        Vector3d vector3d = new Vector3d(x + 8, y + 2, z + 8);
+                                        POIMarker poiMarker = set.createPOIMarker(town.getName() + space + "icon", map, vector3d);
+                                        poiMarker.setLabel(getHTMLforTown(town));
+                                        if (town.isCapital()) {
+                                            poiMarker.setIcon(TownyBlue.config.getString("capital-marker"), poiMarker.getIconAnchor());
+                                        } else {
+                                            poiMarker.setIcon(TownyBlue.config.getString("home-marker"), poiMarker.getIconAnchor());
+                                        }
+                                        poiMarker.setMaxDistance(TownyBlue.config.getInt("max-distance"));
+                                    }
+                                } catch (NotRegisteredException ee) {
+                                    ee.printStackTrace();
+                                    set.removeMarker(marker);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    for (Marker marker : set.getMarkers()) {
+                        if (marker.getId().contains(String.valueOf(townBlock.getX())) && marker.getId().contains(String.valueOf(townBlock.getZ()))) {
+                            set.removeMarker(marker);
+                        }
+                    }
+                }
+            } catch (IOException e) {e.printStackTrace();}
+        });
     }
 
     public static String getHTMLforTown(Town town) {
